@@ -16,7 +16,7 @@ external_components:
 
 # Enable logging
 logger:
-  level: VERBOSE
+  level: WARN
   baud_rate: 0
 
 # Enable Home Assistant API
@@ -154,7 +154,7 @@ sensor:
                 id(inverter_mode_text_sensor).publish_state("Waiting for response...");
               }
 
-# Uncomment this sensor and the i2c section to use the AHT10
+# Uncomment this sensor and the i2c section to use the AHT10 (remove ambient_temp above)
 #  - platform: aht10
 #    temperature:
 #      name: "FoxESS ambient Temperature"
