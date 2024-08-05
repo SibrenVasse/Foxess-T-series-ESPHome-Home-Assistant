@@ -18,10 +18,9 @@ int16_t encode_int16(uint8_t msb, uint8_t lsb) { return (int16_t) (msb << 8 | ls
 
 void FoxessSolar::setup() {
   ESP_LOGV("FoxessSolar::setup", "start");
-  this->flow_control_pin_->setup();
 
+  this->flow_control_pin_->setup();
   this->millis_lastmessage_ = millis();
-  this->input_buffer.reserve(165);
 }
 
 void FoxessSolar::update() {
@@ -43,51 +42,91 @@ void FoxessSolar::update() {
   }
 
   while (this->available() > 0) {
-    this->input_buffer.push_back(this->read());
+    this->read_byte(&input_buffer[this->buffer_end]);
+    optional<bool> is_valid = this->check_msg();
 
-    if (this->input_buffer.size() < 9) {  // After 9 bytes total_message_length is available
-      continue;
+    if (!is_valid.has_value()) {
+      // Message is still valid, continue reading
+      this->buffer_end++;
+    } else if (*is_valid) {
+      // Message finished and valid
+      this->status_clear_warning();
+      this->parse_message();
+      this->buffer_end = 0;
+      this->millis_lastmessage_ = millis();
+    } else {
+      // Message is invalid, clear buffer
+      this->buffer_end = 0;
     }
-
-    if (this->input_buffer[0] != 0x7E || this->input_buffer[1] != 0x7E || this->input_buffer[2] != 0x02) {
-      ESP_LOGV("FoxessSolar::update", "start of message incorrect: 0x%x, 0x%x, 0x%x", this->input_buffer[0],
-               this->input_buffer[1], this->input_buffer[2]);
-      this->input_buffer.erase(this->input_buffer.begin());
-      continue;
-    }
-
-    uint16_t total_message_length = encode_uint16(this->input_buffer[7], this->input_buffer[8]) + 13;
-    if (this->input_buffer.size() < total_message_length) {
-      ESP_LOGV("FoxessSolar::update", "message not ready, size: %d, input_buff: %d", total_message_length,
-               this->input_buffer.size());
-      continue;
-    }
-
-    if (this->input_buffer[total_message_length - 1] != 0xE7 || this->input_buffer[total_message_length - 2] != 0xE7) {
-      ESP_LOGE("FoxessSolar::update", "Message footer incorrect [..., 0x%x, 0x%x]",
-               this->input_buffer[total_message_length - 2], this->input_buffer[total_message_length - 1]);
-      this->input_buffer.clear();
-      continue;
-    }
-
-    uint16_t received_crc = crc16(this->input_buffer.data() + 2,   // Data start after header size 2
-                                  this->input_buffer.size() - 6);  // -2 HEAD -2 FOOT -2 CHECKSUM
-    uint16_t calc_crc =
-        encode_uint16(this->input_buffer[total_message_length - 3], this->input_buffer[total_message_length - 4]);
-    if (received_crc != calc_crc) {
-      ESP_LOGE("FoxessSolar::update", "Checksum mismatch, calc: 0x%x, message: 0x%x", calc_crc, received_crc);
-      this->input_buffer.clear();
-      continue;
-    }
-
-    this->parse_message();
-    this->input_buffer.clear();
   }
+}
+
+// Return true if message is still valid
+// Return false if message is invalid (buffer should be cleared)
+// Return empty if message is complete and valid
+optional<bool> FoxessSolar::check_msg() {
+  size_t idx = this->buffer_end;
+  uint8_t data = this->input_buffer[idx];
+
+  // Check if Header is valid
+  if (idx <= 2) {
+    if (data == MSG_HEADER[idx]) {
+      return {};
+    } else {
+      ESP_LOGV("FoxessSolar::check_msg", "Start of message incorrect: 0x%x, 0x%x, 0x%x", this->input_buffer[0],
+               this->input_buffer[1], this->input_buffer[2]);
+      return false;
+    }
+  }
+
+  // Check if msg_len available
+  if (idx < 9) {
+    return {};
+  }
+
+  // Check if buffer is full
+  if (idx + 1 == BUFFER_SIZE) {
+    ESP_LOGE("FoxessSolar::check_msg", "Buffer full");
+    this->status_set_warning();
+    return false;
+  }
+
+  // Check if message length is correct
+  uint16_t msg_len = encode_uint16(this->input_buffer[7], this->input_buffer[8]) + 13;
+  if (idx + 1 < msg_len) {
+    ESP_LOGV("FoxessSolar::check_msg", "Message not ready, size: %d, idx: %d", msg_len, idx);
+    return {};
+  }
+
+  // Check if footer is correct
+  if (this->input_buffer[idx - 1] != MSG_FOOTER[0] || this->input_buffer[idx] != MSG_FOOTER[1]) {
+    ESP_LOGE("FoxessSolar::check_msg", "Message footer incorrect [..., 0x%x, 0x%x]", this->input_buffer[idx - 1],
+             this->input_buffer[idx]);
+    this->status_set_warning();
+    return false;
+  }
+
+  // Check CRC
+  uint16_t received_crc = crc16(&this->input_buffer[2],  // Data start after header size 2
+                                msg_len - 6);            // size -2 HEAD -2 FOOT -2 CHECKSUM
+  uint16_t calc_crc = encode_uint16(this->input_buffer[idx - 2], this->input_buffer[idx - 3]);
+  if (received_crc != calc_crc) {
+    ESP_LOGE("FoxessSolar::check_msg", "Checksum mismatch, calc: 0x%x, message: 0x%x", calc_crc, received_crc);
+    this->status_set_warning();
+    return false;
+  }
+
+  return true;
 }
 
 void FoxessSolar::parse_message() {
   ESP_LOGV("FoxessSolar::parse_message", "start");
   this->millis_lastmessage_ = millis();
+
+  if (this->buffer_end + 1 != 163) {
+    ESP_LOGW("FoxessSolar::parse_message", "Unexpected msg length, length: %d", this->buffer_end + 1);
+    this->status_set_warning();
+  }
 
   auto &msg = this->input_buffer;
   publish_sensor_state(this->grid_power_, encode_int16(msg[9], msg[10]), 1);

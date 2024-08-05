@@ -17,7 +17,7 @@
 
 #define PUBLISH_ZERO_PHASE(...) \
   { \
-    size_t phases[] = {__VA_ARGS__}; \
+    const size_t phases[] = {__VA_ARGS__}; \
     for (size_t i = 0; i < sizeof(phases) / sizeof(phases[0]); i++) { \
       publish_sensor_state(this->phases_[i].voltage_sensor_, 0, 1); \
       publish_sensor_state(this->phases_[i].current_sensor_, 0, 1); \
@@ -27,7 +27,7 @@
   }
 #define PUBLISH_ZERO_PV(...) \
   { \
-    size_t pvs[] = {__VA_ARGS__}; \
+    const size_t pvs[] = {__VA_ARGS__}; \
     for (size_t i = 0; i < sizeof(pvs) / sizeof(pvs[0]); i++) { \
       publish_sensor_state(this->pvs_[i].voltage_sensor_, 0, 1); \
       publish_sensor_state(this->pvs_[i].current_sensor_, 0, 1); \
@@ -39,6 +39,10 @@ namespace esphome {
 namespace foxess_solar {
 
 static const long INVERTER_TIMEOUT = 300000;  // ms
+static const size_t BUFFER_SIZE = 256;
+
+static const std::array<uint8_t, 3> MSG_HEADER = {0x7E, 0x7E, 0x02};
+static const std::array<uint8_t, 2> MSG_FOOTER = {0xE7, 0xE7};
 
 class FoxessSolar : public PollingComponent, public uart::UARTDevice {
  public:
@@ -69,10 +73,12 @@ class FoxessSolar : public PollingComponent, public uart::UARTDevice {
  protected:
   void parse_message();
   void set_inverter_mode(uint32_t mode);
+  optional<bool> check_msg();
 
   GPIOPin *flow_control_pin_{nullptr};
-  std::vector<uint8_t> input_buffer{};
   uint32_t millis_lastmessage_{0};
+  std::array<uint8_t, BUFFER_SIZE> input_buffer{};
+  size_t buffer_end{0};
 
   uint32_t inverter_mode_{99};
   sensor::Sensor *inverter_status_{nullptr};  // 0=Offline, 1=Online, 2=Error, 99=Waiting for response...
