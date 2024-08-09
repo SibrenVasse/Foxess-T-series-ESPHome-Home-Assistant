@@ -41,8 +41,16 @@ void FoxessSolar::update() {
     }
   }
 
-  while (this->available() > 0) {
-    this->read_byte(&input_buffer[this->buffer_end]);
+  size_t avail = this->available();
+  if (avail == 0) {
+    return;
+  }
+
+  std::array<uint8_t, BUFFER_SIZE> local_buff{};
+  this->read_array(local_buff.data(), std::min<size_t>(avail, BUFFER_SIZE));
+
+  for (size_t i = 0; i < avail; i++) {
+    this->input_buffer[this->buffer_end] = local_buff[i];
     optional<bool> is_valid = this->check_msg();
 
     if (!is_valid.has_value()) {
