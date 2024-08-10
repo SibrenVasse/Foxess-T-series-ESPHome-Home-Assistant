@@ -14,17 +14,17 @@ void publish_sensor_state(sensor::Sensor *sensor, int32_t val, float unit) {
   sensor->publish_state(value);
 };
 
-int16_t encode_int16(uint8_t msb, uint8_t lsb) { return (int16_t) (msb << 8 | lsb); }
+int16_t encode_int16(uint8_t msb, uint8_t lsb) { return static_cast<uint16_t>(msb << 8 | lsb); }
 
 void FoxessSolar::setup() {
-  ESP_LOGV("FoxessSolar::setup", "start");
+  ESP_LOGVV("FoxessSolar::setup", "start");
 
   this->flow_control_pin_->setup();
   this->millis_lastmessage_ = millis();
 }
 
 void FoxessSolar::update() {
-  ESP_LOGV("FoxessSolar::update", "start");
+  ESP_LOGVV("FoxessSolar::update", "start");
   if (millis() - this->millis_lastmessage_ >= INVERTER_TIMEOUT) {
     if (this->inverter_mode_ != 0) {
       this->set_inverter_mode(0);  // OFFLINE
@@ -74,15 +74,14 @@ void FoxessSolar::update() {
 // Return empty if message is complete and valid
 optional<bool> FoxessSolar::check_msg() {
   size_t idx = this->buffer_end;
-  uint8_t data = this->input_buffer[idx];
 
   // Check if Header is valid
   if (idx <= 2) {
-    if (data == MSG_HEADER[idx]) {
+    if (this->input_buffer[idx] == MSG_HEADER[idx]) {
       return {};
     } else {
-      ESP_LOGV("FoxessSolar::check_msg", "Start of message incorrect: 0x%x, 0x%x, 0x%x", this->input_buffer[0],
-               this->input_buffer[1], this->input_buffer[2]);
+      ESP_LOGVV("FoxessSolar::check_msg", "Start of message incorrect: 0x%x, 0x%x, 0x%x", this->input_buffer[0],
+                this->input_buffer[1], this->input_buffer[2]);
       return false;
     }
   }
@@ -102,7 +101,7 @@ optional<bool> FoxessSolar::check_msg() {
   // Check if message length is correct
   uint16_t msg_len = encode_uint16(this->input_buffer[7], this->input_buffer[8]) + 13;
   if (idx + 1 < msg_len) {
-    ESP_LOGV("FoxessSolar::check_msg", "Message not ready, size: %d, idx: %d", msg_len, idx);
+    ESP_LOGVV("FoxessSolar::check_msg", "Message not ready, size: %d, idx: %d", msg_len, idx);
     return {};
   }
 
@@ -128,7 +127,7 @@ optional<bool> FoxessSolar::check_msg() {
 }
 
 void FoxessSolar::parse_message() {
-  ESP_LOGV("FoxessSolar::parse_message", "start");
+  ESP_LOGVV("FoxessSolar::parse_message", "start");
   this->millis_lastmessage_ = millis();
 
   if (this->buffer_end + 1 != 163) {
