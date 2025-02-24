@@ -136,58 +136,62 @@ void FoxessSolar::parse_message() {
   }
 
   auto &msg = this->input_buffer;
-  publish_sensor_state(this->grid_power_, encode_int16(msg[9], msg[10]), 1);
-  publish_sensor_state(this->generation_power_, encode_uint16(msg[11], msg[12]), 1);
-  publish_sensor_state(this->loads_power_, encode_int16(msg[13], msg[14]), 1);
+  publish_sensor_state(this->grid_power_, encode_int16(msg[13], msg[14]), 1);
+  publish_sensor_state(this->generation_power_, encode_uint16(msg[15], msg[16]), 1);
+  publish_sensor_state(this->loads_power_, encode_int16(msg[17], msg[18]), 1);
 
-  publish_sensor_state(this->phases_[0].voltage_sensor_, encode_uint16(msg[15], msg[16]), 0.1);
-  publish_sensor_state(this->phases_[0].current_sensor_, encode_uint16(msg[17], msg[18]), 0.1);
-  publish_sensor_state(this->phases_[0].frequency_sensor_, encode_uint16(msg[19], msg[20]), 0.01);
-  publish_sensor_state(this->phases_[0].active_power_sensor_, encode_uint16(msg[21], msg[22]), 1);
+  publish_sensor_state(this->phases_[0].voltage_sensor_, encode_uint16(msg[21], msg[22]), 0.1);
+  publish_sensor_state(this->phases_[0].current_sensor_, encode_uint16(msg[23], msg[24]), 0.1);
+  publish_sensor_state(this->phases_[0].frequency_sensor_, encode_uint16(msg[25], msg[26]), 0.01);
+  publish_sensor_state(this->phases_[0].active_power_sensor_, encode_uint16(msg[27], msg[28]), 1);
 
-  publish_sensor_state(this->phases_[1].voltage_sensor_, encode_uint16(msg[23], msg[24]), 0.1);
-  publish_sensor_state(this->phases_[1].current_sensor_, encode_uint16(msg[25], msg[26]), 0.1);
-  publish_sensor_state(this->phases_[1].frequency_sensor_, encode_uint16(msg[27], msg[28]), 0.01);
-  publish_sensor_state(this->phases_[1].active_power_sensor_, encode_uint16(msg[29], msg[30]), 1);
+  publish_sensor_state(this->phases_[1].voltage_sensor_, encode_uint16(msg[29], msg[30]), 0.1);
+  publish_sensor_state(this->phases_[1].current_sensor_, encode_uint16(msg[31], msg[32]), 0.1);
+  publish_sensor_state(this->phases_[1].frequency_sensor_, encode_uint16(msg[33], msg[34]), 0.01);
+  publish_sensor_state(this->phases_[1].active_power_sensor_, encode_uint16(msg[35], msg[36]), 1);
 
-  publish_sensor_state(this->phases_[2].voltage_sensor_, encode_uint16(msg[31], msg[32]), 0.1);
-  publish_sensor_state(this->phases_[2].current_sensor_, encode_uint16(msg[33], msg[34]), 0.1);
-  publish_sensor_state(this->phases_[2].frequency_sensor_, encode_uint16(msg[35], msg[36]), 0.01);
-  publish_sensor_state(this->phases_[2].active_power_sensor_, encode_uint16(msg[37], msg[38]), 1);
+  publish_sensor_state(this->phases_[2].voltage_sensor_, encode_uint16(msg[37], msg[38]), 0.1);
+  publish_sensor_state(this->phases_[2].current_sensor_, encode_uint16(msg[39], msg[40]), 0.1);
+  publish_sensor_state(this->phases_[2].frequency_sensor_, encode_uint16(msg[41], msg[42]), 0.01);
+  publish_sensor_state(this->phases_[2].active_power_sensor_, encode_uint16(msg[43], msg[44]), 1);
 
-  uint16_t volt = encode_uint16(msg[39], msg[40]);
-  uint16_t amps = encode_uint16(msg[41], msg[42]);
+  uint16_t volt = encode_uint16(msg[45], msg[46]);
+  uint16_t amps = encode_uint16(msg[47], msg[48]);
+  uint16_t wats = encode_uint16(msg[49], msg[50]);
   publish_sensor_state(this->pvs_[0].voltage_sensor_, volt, 0.1);
   publish_sensor_state(this->pvs_[0].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[0].active_power_sensor_, volt * amps, 0.01);
-
-  volt = encode_uint16(msg[45], msg[46]);
-  amps = encode_uint16(msg[47], msg[48]);
-  publish_sensor_state(this->pvs_[1].voltage_sensor_, volt, 0.1);
-  publish_sensor_state(this->pvs_[1].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[1].active_power_sensor_, volt * amps, 0.01);
+  publish_sensor_state(this->pvs_[0].active_power_sensor_, wats, 0.1);
 
   volt = encode_uint16(msg[51], msg[52]);
   amps = encode_uint16(msg[53], msg[54]);
-  publish_sensor_state(this->pvs_[2].voltage_sensor_, volt, 0.1);
-  publish_sensor_state(this->pvs_[2].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[2].active_power_sensor_, volt * amps, 0.01);
+  wats = encode_uint16(msg[55], msg[56]);
+  publish_sensor_state(this->pvs_[1].voltage_sensor_, volt, 0.1);
+  publish_sensor_state(this->pvs_[1].current_sensor_, amps, 0.1);
+  publish_sensor_state(this->pvs_[1].active_power_sensor_, wats, 0.1);
 
   volt = encode_uint16(msg[57], msg[58]);
   amps = encode_uint16(msg[59], msg[60]);
+  wats = encode_uint16(msg[61], msg[62]);
+  publish_sensor_state(this->pvs_[2].voltage_sensor_, volt, 0.1);
+  publish_sensor_state(this->pvs_[2].current_sensor_, amps, 0.1);
+  publish_sensor_state(this->pvs_[2].active_power_sensor_, wats, 0.1);
+
+  volt = encode_uint16(msg[63], msg[64]);
+  amps = encode_uint16(msg[65], msg[66]);
+  wats = encode_uint16(msg[67], msg[68]);
   publish_sensor_state(this->pvs_[3].voltage_sensor_, volt, 0.1);
   publish_sensor_state(this->pvs_[3].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[3].active_power_sensor_, volt * amps, 0.01);
+  publish_sensor_state(this->pvs_[3].active_power_sensor_, wats, 0.1);
 
-  publish_sensor_state(this->boost_temp_, encode_int16(msg[63], msg[64]), 1);
-  publish_sensor_state(this->inverter_temp_, encode_int16(msg[65], msg[66]), 1);
-  publish_sensor_state(this->ambient_temp_, encode_int16(msg[67], msg[68]), 1);
+  publish_sensor_state(this->boost_temp_, encode_int16(msg[69], msg[70]), 1);
+  publish_sensor_state(this->inverter_temp_, encode_int16(msg[71], msg[72]), 1);
+  publish_sensor_state(this->ambient_temp_, encode_int16(msg[73], msg[74]), 1);
 
-  publish_sensor_state(this->energy_production_day_, encode_uint16(msg[69], msg[70]), 0.1);
+  publish_sensor_state(this->energy_production_day_, encode_uint16(msg[75], msg[76]), 0.1);
 
-  publish_sensor_state(this->total_energy_production_, encode_uint32(msg[71], msg[72], msg[73], msg[74]), 0.1);
+  publish_sensor_state(this->total_energy_production_, encode_uint32(msg[77], msg[78], msg[79], msg[80]), 0.1);
 
-  if (!std::all_of(this->input_buffer.begin() + 125, this->input_buffer.begin() + 157, [](int i) { return i == 0; })) {
+  if (!std::all_of(this->input_buffer.begin() + 131, this->input_buffer.begin() + 163, [](int i) { return i == 0; })) {
     this->set_inverter_mode(2);  // ERROR
     return;
   }
