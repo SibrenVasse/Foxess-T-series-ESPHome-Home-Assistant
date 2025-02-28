@@ -160,28 +160,28 @@ void FoxessSolar::parse_message() {
   uint16_t wats = encode_uint16(msg[49], msg[50]);
   publish_sensor_state(this->pvs_[0].voltage_sensor_, volt, 0.1);
   publish_sensor_state(this->pvs_[0].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[0].active_power_sensor_, wats, 0.1);
+  publish_sensor_state(this->pvs_[0].active_power_sensor_, wats, 1);
 
   volt = encode_uint16(msg[51], msg[52]);
   amps = encode_uint16(msg[53], msg[54]);
   wats = encode_uint16(msg[55], msg[56]);
   publish_sensor_state(this->pvs_[1].voltage_sensor_, volt, 0.1);
   publish_sensor_state(this->pvs_[1].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[1].active_power_sensor_, wats, 0.1);
+  publish_sensor_state(this->pvs_[1].active_power_sensor_, wats, 1);
 
   volt = encode_uint16(msg[57], msg[58]);
   amps = encode_uint16(msg[59], msg[60]);
   wats = encode_uint16(msg[61], msg[62]);
   publish_sensor_state(this->pvs_[2].voltage_sensor_, volt, 0.1);
   publish_sensor_state(this->pvs_[2].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[2].active_power_sensor_, wats, 0.1);
+  publish_sensor_state(this->pvs_[2].active_power_sensor_, wats, 1);
 
   volt = encode_uint16(msg[63], msg[64]);
   amps = encode_uint16(msg[65], msg[66]);
   wats = encode_uint16(msg[67], msg[68]);
   publish_sensor_state(this->pvs_[3].voltage_sensor_, volt, 0.1);
   publish_sensor_state(this->pvs_[3].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[3].active_power_sensor_, wats, 0.1);
+  publish_sensor_state(this->pvs_[3].active_power_sensor_, wats, 1);
 
   publish_sensor_state(this->boost_temp_, encode_int16(msg[69], msg[70]), 1);
   publish_sensor_state(this->inverter_temp_, encode_int16(msg[71], msg[72]), 1);
