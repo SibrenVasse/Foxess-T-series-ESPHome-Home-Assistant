@@ -15,12 +15,14 @@ from esphome.const import (
     DEVICE_CLASS_ENERGY,
     DEVICE_CLASS_FREQUENCY,
     DEVICE_CLASS_POWER,
+    DEVICE_CLASS_POWER_FACTOR,
     DEVICE_CLASS_VOLTAGE,
     DEVICE_CLASS_TEMPERATURE,
     STATE_CLASS_MEASUREMENT,
     STATE_CLASS_TOTAL_INCREASING,
     UNIT_AMPERE,
     UNIT_CELSIUS,
+    UNIT_EMPTY,
     UNIT_HERTZ,
     UNIT_KILOWATT_HOURS,
     UNIT_VOLT,
@@ -38,6 +40,7 @@ CONF_PV4 = "pv4"
 CONF_LOADS_POWER = "loads_power"
 CONF_GRID_POWER = "grid_power"
 CONF_GENERATION_POWER = "generation_power"
+CONF_POWER_FACTOR = "power_factor"
 
 CONF_INVERTER_STATUS = "inverter_status"
 CONF_INVERTER_TEMP = "inverter_temp"
@@ -134,6 +137,12 @@ CONFIG_SCHEMA = (
                 unit_of_measurement=UNIT_WATT,
                 accuracy_decimals=0,
                 device_class=DEVICE_CLASS_POWER,
+                state_class=STATE_CLASS_MEASUREMENT,
+            ),
+            cv.Optional(CONF_POWER_FACTOR): sensor.sensor_schema(
+                unit_of_measurement=UNIT_EMPTY,
+                accuracy_decimals=2,
+                device_class=DEVICE_CLASS_POWER_FACTOR,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
             cv.Optional(CONF_INVERTER_TEMP): sensor.sensor_schema(
