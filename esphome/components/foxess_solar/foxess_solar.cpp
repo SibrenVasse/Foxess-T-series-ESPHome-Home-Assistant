@@ -191,7 +191,7 @@ void FoxessSolar::parse_message() {
 
   publish_sensor_state(this->total_energy_production_, encode_uint32(msg[77], msg[78], msg[79], msg[80]), 0.1);
 
-  publish_sensor_state(this->power_factor_, encode_uint16(msg[172], msg[173]), 0.01);
+  publish_sensor_state(this->power_factor_, encode_uint16(msg[171], msg[172]), 0.01);
 
   if (!std::all_of(this->input_buffer.begin() + 131, this->input_buffer.begin() + 163, [](int i) { return i == 0; })) {
     this->set_inverter_mode(2);  // ERROR
