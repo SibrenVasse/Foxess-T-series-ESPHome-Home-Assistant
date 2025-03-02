@@ -132,6 +132,8 @@ sensor:
       name: "FoxESS Loads Power"
     power_factor:
       name: "FoxESS Power Factor"
+    reactive_power:
+      name: "FoxESS Reactive Power"
 
     inverter_temp:
       name: "FoxESS Inverter Temp"
