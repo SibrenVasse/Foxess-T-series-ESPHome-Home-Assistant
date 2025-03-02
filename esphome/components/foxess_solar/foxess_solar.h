@@ -102,7 +102,7 @@ class FoxessSolar : public PollingComponent, public uart::UARTDevice {
   sensor::Sensor *grid_power_{nullptr};
   sensor::Sensor *generation_power_{nullptr};
   sensor::Sensor *power_factor_{nullptr};
-  sensor::Sensor reactive_power_{nullptr};
+  sensor::Sensor *reactive_power_{nullptr};
 
   sensor::Sensor *boost_temp_{nullptr};
   sensor::Sensor *inverter_temp_{nullptr};
