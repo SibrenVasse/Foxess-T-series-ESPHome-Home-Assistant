@@ -3,6 +3,8 @@
 #include "esphome/core/component.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/uart/uart.h"
+#include <array>
+#include <cstddef>
 
 #define SENSOR_SETTER(X) \
   void set_##X##_sensor(sensor::Sensor *sensor) { this->X##_ = sensor; }
@@ -15,34 +17,50 @@
 #define PV_SENSOR_SETTER(X) \
   void set_pv_##X##_sensor(uint8_t pv, sensor::Sensor *X##_sensor) { this->pvs_[pv].X##_sensor_ = X##_sensor; }
 
-#define PUBLISH_ZERO_PHASE(...) \
-  { \
-    const size_t phases[] = {__VA_ARGS__}; \
-    for (size_t i = 0; i < sizeof(phases) / sizeof(phases[0]); i++) { \
-      publish_sensor_state(this->phases_[i].voltage_sensor_, 0, 1); \
-      publish_sensor_state(this->phases_[i].current_sensor_, 0, 1); \
-      publish_sensor_state(this->phases_[i].frequency_sensor_, 0, NAN); \
-      publish_sensor_state(this->phases_[i].active_power_sensor_, 0, 1); \
-    } \
-  }
-#define PUBLISH_ZERO_PV(...) \
-  { \
-    const size_t pvs[] = {__VA_ARGS__}; \
-    for (size_t i = 0; i < sizeof(pvs) / sizeof(pvs[0]); i++) { \
-      publish_sensor_state(this->pvs_[i].voltage_sensor_, 0, 1); \
-      publish_sensor_state(this->pvs_[i].current_sensor_, 0, 1); \
-      publish_sensor_state(this->pvs_[i].active_power_sensor_, 0, 1); \
-    } \
-  }
-
 namespace esphome {
 namespace foxess_solar {
 
 static const long INVERTER_TIMEOUT = 300000;  // ms
-static const size_t BUFFER_SIZE = 256;
+static const std::size_t BUFFER_SIZE = 256;
 
 static const std::array<uint8_t, 3> MSG_HEADER = {0x7E, 0x7E, 0x02};
 static const std::array<uint8_t, 2> MSG_FOOTER = {0xE7, 0xE7};
+
+// All offsets in one place
+struct MsgOffset {
+  // powers
+  static constexpr std::size_t GRID_POWER_MSB    = 9;
+  static constexpr std::size_t GRID_POWER_LSB    = 10;
+  static constexpr std::size_t GEN_POWER_MSB     = 11;
+  static constexpr std::size_t GEN_POWER_LSB     = 12;
+  static constexpr std::size_t LOAD_POWER_MSB    = 13;
+  static constexpr std::size_t LOAD_POWER_LSB    = 14;
+
+  // phases
+  static constexpr std::size_t PHASE1_BASE       = 15;  // 15..22
+  static constexpr std::size_t PHASE_STRIDE      = 8;   // 23, 31
+
+  // PVs
+  static constexpr std::size_t PV1_BASE          = 39;  // 39..42
+  static constexpr std::size_t PV_STRIDE         = 6;   // 45, 51, 57
+
+  // temps
+  static constexpr std::size_t BOOST_TEMP_MSB    = 63;
+  static constexpr std::size_t BOOST_TEMP_LSB    = 64;
+  static constexpr std::size_t INVERTER_TEMP_MSB = 65;
+  static constexpr std::size_t INVERTER_TEMP_LSB = 66;
+  static constexpr std::size_t AMBIENT_TEMP_MSB  = 67;
+  static constexpr std::size_t AMBIENT_TEMP_LSB  = 68;
+
+  // energy
+  static constexpr std::size_t ENERGY_DAY_MSB    = 69;
+  static constexpr std::size_t ENERGY_DAY_LSB    = 70;
+  static constexpr std::size_t TOTAL_ENERGY_MSB0 = 71;  // 71..74
+
+  // error block
+  static constexpr std::size_t ERROR_BLOCK_BEGIN = 125;
+  static constexpr std::size_t ERROR_BLOCK_END   = 157; // exclusive
+};
 
 class FoxessSolar : public PollingComponent, public uart::UARTDevice {
  public:
@@ -75,13 +93,17 @@ class FoxessSolar : public PollingComponent, public uart::UARTDevice {
   void set_inverter_mode(uint32_t mode);
   optional<bool> check_msg();
 
+  // now just simple helpers, no span:
+  void publish_zero_phases();
+  void publish_zero_pvs();
+
   GPIOPin *flow_control_pin_{nullptr};
   uint32_t millis_lastmessage_{0};
   std::array<uint8_t, BUFFER_SIZE> input_buffer{};
-  size_t buffer_end{0};
+  std::size_t buffer_end{0};
 
   uint32_t inverter_mode_{99};
-  sensor::Sensor *inverter_status_{nullptr};  // 0=Offline, 1=Online, 2=Error, 99=Waiting for response...
+  sensor::Sensor *inverter_status_{nullptr};  // 0=Offline, 1=Online, 2=Error, 99=Waiting...
 
   struct SolarPhase {
     sensor::Sensor *voltage_sensor_{nullptr};

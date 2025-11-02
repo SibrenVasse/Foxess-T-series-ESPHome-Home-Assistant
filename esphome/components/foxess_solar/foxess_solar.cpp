@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 
 #include "foxess_solar.h"
 #include "esphome/core/log.h"
@@ -7,28 +8,76 @@
 namespace esphome {
 namespace foxess_solar {
 
-void publish_sensor_state(sensor::Sensor *sensor, int32_t val, float unit) {
-  if (sensor == nullptr)
-    return;
-  float value = val * unit;
-  sensor->publish_state(value);
-};
+namespace {
+	
+static const char *const TAG = "foxess_solar";
 
-int16_t encode_int16(uint8_t msb, uint8_t lsb) { return static_cast<uint16_t>(msb << 8 | lsb); }
+static inline void publish_sensor_state(sensor::Sensor *sensor, int32_t raw, float scale) {
+  if (!sensor)
+    return;
+  if (std::isnan(scale)) {
+    sensor->publish_state(NAN);
+  } else {
+    sensor->publish_state(static_cast<float>(raw) * scale);
+  }
+}
+
+static inline int16_t decode_int16(uint8_t msb, uint8_t lsb) {
+  uint16_t u = static_cast<uint16_t>((static_cast<uint16_t>(msb) << 8) | lsb);
+  return static_cast<int16_t>(u);
+}
+
+static inline uint16_t decode_uint16(uint8_t msb, uint8_t lsb) {
+  return static_cast<uint16_t>((static_cast<uint16_t>(msb) << 8) | lsb);
+}
+
+static inline uint32_t decode_uint32(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3) {
+  return (static_cast<uint32_t>(b0) << 24) |
+         (static_cast<uint32_t>(b1) << 16) |
+         (static_cast<uint32_t>(b2) << 8)  |
+         (static_cast<uint32_t>(b3));
+}
+
+}
+
+// -----------------------------------------------------------------------------
 
 void FoxessSolar::setup() {
-  ESP_LOGVV("FoxessSolar::setup", "start");
+  ESP_LOGVV(TAG, "setup start");
 
-  this->flow_control_pin_->setup();
+  if (this->flow_control_pin_ != nullptr) {
+    this->flow_control_pin_->setup();
+  }
+
   this->millis_lastmessage_ = millis();
 }
 
+void FoxessSolar::publish_zero_phases() {
+  for (auto &ph : this->phases_) {
+    publish_sensor_state(ph.voltage_sensor_, 0, 1.0f);
+    publish_sensor_state(ph.current_sensor_, 0, 1.0f);
+    publish_sensor_state(ph.frequency_sensor_, 0, NAN);
+    publish_sensor_state(ph.active_power_sensor_, 0, 1.0f);
+  }
+}
+
+void FoxessSolar::publish_zero_pvs() {
+  for (auto &pv : this->pvs_) {
+    publish_sensor_state(pv.voltage_sensor_, 0, 1.0f);
+    publish_sensor_state(pv.current_sensor_, 0, 1.0f);
+    publish_sensor_state(pv.active_power_sensor_, 0, 1.0f);
+  }
+}
+
 void FoxessSolar::update() {
-  ESP_LOGVV("FoxessSolar::update", "start");
+  ESP_LOGVV(TAG, "update start");
+
+  // handle timeout
   if (millis() - this->millis_lastmessage_ >= INVERTER_TIMEOUT) {
     if (this->inverter_mode_ != 0) {
       this->set_inverter_mode(0);  // OFFLINE
-      publish_sensor_state(this->generation_power_, 0, 1);
+
+      publish_sensor_state(this->generation_power_, 0, 1.0f);
       publish_sensor_state(this->grid_power_, 0, NAN);
       publish_sensor_state(this->loads_power_, 0, NAN);
 
@@ -36,81 +85,83 @@ void FoxessSolar::update() {
       publish_sensor_state(this->ambient_temp_, 0, NAN);
       publish_sensor_state(this->inverter_temp_, 0, NAN);
 
-      PUBLISH_ZERO_PHASE(0, 1, 2)
-      PUBLISH_ZERO_PV(0, 1, 2)
+      this->publish_zero_phases();
+      this->publish_zero_pvs();
     }
   }
 
+  // read bytes
   while (this->available() > 0) {
-    this->read_byte(&input_buffer[this->buffer_end]);
-    optional<bool> is_valid = this->check_msg();
+    this->read_byte(&this->input_buffer[this->buffer_end]);
+    optional<bool> state = this->check_msg();
 
-    if (!is_valid.has_value()) {
-      // Message is still valid, continue reading
+    if (!state.has_value()) {
+      // still reading
       this->buffer_end++;
-    } else if (*is_valid) {
-      // Message finished and valid
+    } else if (*state) {
+      // good complete message
       this->status_clear_warning();
       this->parse_message();
       this->buffer_end = 0;
       this->millis_lastmessage_ = millis();
     } else {
-      // Message is invalid, clear buffer
+      // invalid message
       this->buffer_end = 0;
     }
   }
 }
 
-// Return true if message is still valid
-// Return false if message is invalid (buffer should be cleared)
-// Return empty if message is complete and valid
+// Return std::nullopt -> more bytes needed
+// Return true         -> complete & valid
+// Return false        -> invalid, clear
 optional<bool> FoxessSolar::check_msg() {
-  size_t idx = this->buffer_end;
+  const std::size_t idx = this->buffer_end;
 
-  // Check if Header is valid
+  // 1) header check
   if (idx <= 2) {
     if (this->input_buffer[idx] == MSG_HEADER[idx]) {
       return {};
     } else {
-      ESP_LOGVV("FoxessSolar::check_msg", "Start of message incorrect: 0x%x, 0x%x, 0x%x", this->input_buffer[0],
-                this->input_buffer[1], this->input_buffer[2]);
+      ESP_LOGVV(TAG, "header mismatch at %d: 0x%x", (int) idx, this->input_buffer[idx]);
       return false;
     }
   }
 
-  // Check if msg_len available
+  // 2) need length bytes
   if (idx < 9) {
     return {};
   }
 
-  // Check if buffer is full
-  if (idx + 1 == BUFFER_SIZE) {
-    ESP_LOGE("FoxessSolar::check_msg", "Buffer full");
+  const uint16_t payload_len = decode_uint16(this->input_buffer[7], this->input_buffer[8]);
+  const uint16_t msg_len     = payload_len + 13;
+
+  if (msg_len > BUFFER_SIZE) {
+    ESP_LOGE(TAG, "message too long: %u", msg_len);
     this->status_set_warning();
     return false;
   }
 
-  // Check if message length is correct
-  uint16_t msg_len = encode_uint16(this->input_buffer[7], this->input_buffer[8]) + 13;
+  // not fully read yet?
   if (idx + 1 < msg_len) {
-    ESP_LOGVV("FoxessSolar::check_msg", "Message not ready, size: %d, idx: %d", msg_len, idx);
+    ESP_LOGVV(TAG, "message incomplete: have %u, need %u", (unsigned)(idx + 1), (unsigned)msg_len);
     return {};
   }
 
-  // Check if footer is correct
-  if (this->input_buffer[idx - 1] != MSG_FOOTER[0] || this->input_buffer[idx] != MSG_FOOTER[1]) {
-    ESP_LOGE("FoxessSolar::check_msg", "Message footer incorrect [..., 0x%x, 0x%x]", this->input_buffer[idx - 1],
-             this->input_buffer[idx]);
+  // footer
+  if (this->input_buffer[msg_len - 2] != MSG_FOOTER[0] ||
+      this->input_buffer[msg_len - 1] != MSG_FOOTER[1]) {
+    ESP_LOGE(TAG, "bad footer: ... 0x%x 0x%x",
+             this->input_buffer[msg_len - 2], this->input_buffer[msg_len - 1]);
     this->status_set_warning();
     return false;
   }
 
-  // Check CRC
-  uint16_t received_crc = crc16(&this->input_buffer[2],  // Data start after header size 2
-                                msg_len - 6);            // size -2 HEAD -2 FOOT -2 CHECKSUM
-  uint16_t calc_crc = encode_uint16(this->input_buffer[idx - 2], this->input_buffer[idx - 3]);
-  if (received_crc != calc_crc) {
-    ESP_LOGE("FoxessSolar::check_msg", "Checksum mismatch, calc: 0x%x, message: 0x%x", calc_crc, received_crc);
+ // CRC
+  const uint16_t calc_crc = crc16(&this->input_buffer[2], msg_len - 6);
+  const uint16_t msg_crc  = decode_uint16(this->input_buffer[msg_len - 3],
+                                          this->input_buffer[msg_len - 4]);
+  if (calc_crc != msg_crc) {
+    ESP_LOGE(TAG, "checksum mismatch, calc: 0x%x, msg: 0x%x", calc_crc, msg_crc);
     this->status_set_warning();
     return false;
   }
@@ -119,68 +170,85 @@ optional<bool> FoxessSolar::check_msg() {
 }
 
 void FoxessSolar::parse_message() {
-  ESP_LOGVV("FoxessSolar::parse_message", "start");
-  this->millis_lastmessage_ = millis();
+  ESP_LOGVV(TAG, "parse_message start");
 
-  if (this->buffer_end + 1 != 163) {
-    ESP_LOGW("FoxessSolar::parse_message", "Unexpected msg length, length: %d", this->buffer_end + 1);
+  const std::size_t total_len = this->buffer_end + 1;
+  auto &msg = this->input_buffer;
+
+  if (total_len != 163) {
+    ESP_LOGW(TAG, "unexpected message length: %u (expected 163)", (unsigned) total_len);
     this->status_set_warning();
   }
 
-  auto &msg = this->input_buffer;
-  publish_sensor_state(this->grid_power_, encode_int16(msg[9], msg[10]), 1);
-  publish_sensor_state(this->generation_power_, encode_uint16(msg[11], msg[12]), 1);
-  publish_sensor_state(this->loads_power_, encode_int16(msg[13], msg[14]), 1);
+  // powers
+  publish_sensor_state(this->grid_power_,
+                       decode_int16(msg[MsgOffset::GRID_POWER_MSB],
+                                    msg[MsgOffset::GRID_POWER_LSB]),
+                       1.0f);
+  publish_sensor_state(this->generation_power_,
+                       decode_uint16(msg[MsgOffset::GEN_POWER_MSB],
+                                     msg[MsgOffset::GEN_POWER_LSB]),
+                       1.0f);
+  publish_sensor_state(this->loads_power_,
+                       decode_int16(msg[MsgOffset::LOAD_POWER_MSB],
+                                    msg[MsgOffset::LOAD_POWER_LSB]),
+                       1.0f);
 
-  publish_sensor_state(this->phases_[0].voltage_sensor_, encode_uint16(msg[15], msg[16]), 0.1);
-  publish_sensor_state(this->phases_[0].current_sensor_, encode_uint16(msg[17], msg[18]), 0.1);
-  publish_sensor_state(this->phases_[0].frequency_sensor_, encode_uint16(msg[19], msg[20]), 0.01);
-  publish_sensor_state(this->phases_[0].active_power_sensor_, encode_uint16(msg[21], msg[22]), 1);
+  // phases
+  for (std::size_t i = 0; i < 3; i++) {
+    const std::size_t base = MsgOffset::PHASE1_BASE + i * MsgOffset::PHASE_STRIDE;
+    auto &ph = this->phases_[i];
 
-  publish_sensor_state(this->phases_[1].voltage_sensor_, encode_uint16(msg[23], msg[24]), 0.1);
-  publish_sensor_state(this->phases_[1].current_sensor_, encode_uint16(msg[25], msg[26]), 0.1);
-  publish_sensor_state(this->phases_[1].frequency_sensor_, encode_uint16(msg[27], msg[28]), 0.01);
-  publish_sensor_state(this->phases_[1].active_power_sensor_, encode_uint16(msg[29], msg[30]), 1);
+    publish_sensor_state(ph.voltage_sensor_,   decode_uint16(msg[base + 0], msg[base + 1]), 0.1f);
+    publish_sensor_state(ph.current_sensor_,   decode_uint16(msg[base + 2], msg[base + 3]), 0.1f);
+    publish_sensor_state(ph.frequency_sensor_, decode_uint16(msg[base + 4], msg[base + 5]), 0.01f);
+    publish_sensor_state(ph.active_power_sensor_, decode_uint16(msg[base + 6], msg[base + 7]), 1.0f);
+  }
 
-  publish_sensor_state(this->phases_[2].voltage_sensor_, encode_uint16(msg[31], msg[32]), 0.1);
-  publish_sensor_state(this->phases_[2].current_sensor_, encode_uint16(msg[33], msg[34]), 0.1);
-  publish_sensor_state(this->phases_[2].frequency_sensor_, encode_uint16(msg[35], msg[36]), 0.01);
-  publish_sensor_state(this->phases_[2].active_power_sensor_, encode_uint16(msg[37], msg[38]), 1);
+  // pvs
+  for (std::size_t i = 0; i < 4; i++) {
+    const std::size_t base = MsgOffset::PV1_BASE + i * MsgOffset::PV_STRIDE;
+    const uint16_t volt = decode_uint16(msg[base + 0], msg[base + 1]);
+    const uint16_t amps = decode_uint16(msg[base + 2], msg[base + 3]);
+    auto &pv = this->pvs_[i];
 
-  uint16_t volt = encode_uint16(msg[39], msg[40]);
-  uint16_t amps = encode_uint16(msg[41], msg[42]);
-  publish_sensor_state(this->pvs_[0].voltage_sensor_, volt, 0.1);
-  publish_sensor_state(this->pvs_[0].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[0].active_power_sensor_, volt * amps, 0.01);
+    publish_sensor_state(pv.voltage_sensor_, volt, 0.1f);
+    publish_sensor_state(pv.current_sensor_, amps, 0.1f);
+    publish_sensor_state(pv.active_power_sensor_,
+                         static_cast<int32_t>(volt) * static_cast<int32_t>(amps),
+                         0.01f);
+  }
 
-  volt = encode_uint16(msg[45], msg[46]);
-  amps = encode_uint16(msg[47], msg[48]);
-  publish_sensor_state(this->pvs_[1].voltage_sensor_, volt, 0.1);
-  publish_sensor_state(this->pvs_[1].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[1].active_power_sensor_, volt * amps, 0.01);
+  // temps
+  publish_sensor_state(this->boost_temp_,
+                       decode_int16(msg[MsgOffset::BOOST_TEMP_MSB],
+                                    msg[MsgOffset::BOOST_TEMP_LSB]),
+                       1.0f);
+  publish_sensor_state(this->inverter_temp_,
+                       decode_int16(msg[MsgOffset::INVERTER_TEMP_MSB],
+                                    msg[MsgOffset::INVERTER_TEMP_LSB]),
+                       1.0f);
+  publish_sensor_state(this->ambient_temp_,
+                       decode_int16(msg[MsgOffset::AMBIENT_TEMP_MSB],
+                                    msg[MsgOffset::AMBIENT_TEMP_LSB]),
+                       1.0f);
 
-  volt = encode_uint16(msg[51], msg[52]);
-  amps = encode_uint16(msg[53], msg[54]);
-  publish_sensor_state(this->pvs_[2].voltage_sensor_, volt, 0.1);
-  publish_sensor_state(this->pvs_[2].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[2].active_power_sensor_, volt * amps, 0.01);
+  // energy
+  publish_sensor_state(this->energy_production_day_,
+                       decode_uint16(msg[MsgOffset::ENERGY_DAY_MSB],
+                                     msg[MsgOffset::ENERGY_DAY_LSB]),
+                       0.1f);
+  publish_sensor_state(this->total_energy_production_,
+                       decode_uint32(msg[MsgOffset::TOTAL_ENERGY_MSB0],
+                                     msg[MsgOffset::TOTAL_ENERGY_MSB0 + 1],
+                                     msg[MsgOffset::TOTAL_ENERGY_MSB0 + 2],
+                                     msg[MsgOffset::TOTAL_ENERGY_MSB0 + 3]),
+                       0.1f);
 
-  volt = encode_uint16(msg[57], msg[58]);
-  amps = encode_uint16(msg[59], msg[60]);
-  publish_sensor_state(this->pvs_[3].voltage_sensor_, volt, 0.1);
-  publish_sensor_state(this->pvs_[3].current_sensor_, amps, 0.1);
-  publish_sensor_state(this->pvs_[3].active_power_sensor_, volt * amps, 0.01);
-
-  publish_sensor_state(this->boost_temp_, encode_int16(msg[63], msg[64]), 1);
-  publish_sensor_state(this->inverter_temp_, encode_int16(msg[65], msg[66]), 1);
-  publish_sensor_state(this->ambient_temp_, encode_int16(msg[67], msg[68]), 1);
-
-  publish_sensor_state(this->energy_production_day_, encode_uint16(msg[69], msg[70]), 0.1);
-
-  publish_sensor_state(this->total_energy_production_, encode_uint32(msg[71], msg[72], msg[73], msg[74]), 0.1);
-
-  if (!std::all_of(this->input_buffer.begin() + 125, this->input_buffer.begin() + 157,
-                   [](uint8_t i) { return i == 0; })) {
+  // error block check
+  if (!std::all_of(msg.begin() + MsgOffset::ERROR_BLOCK_BEGIN,
+                   msg.begin() + MsgOffset::ERROR_BLOCK_END,
+                   [](uint8_t b) { return b == 0; })) {
     this->set_inverter_mode(2);  // ERROR
     return;
   }

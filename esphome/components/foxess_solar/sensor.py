@@ -47,9 +47,7 @@ CONF_AMBIENT_TEMP = "ambient_temp"
 DEPENDENCIES = ["uart"]
 
 foxess_solar_ns = cg.esphome_ns.namespace("foxess_solar")
-FoxessSolar = foxess_solar_ns.class_(
-    "FoxessSolar", cg.PollingComponent, uart.UARTDevice
-)
+FoxessSolar = foxess_solar_ns.class_("FoxessSolar", cg.PollingComponent, uart.UARTDevice)
 
 PHASE_SENSORS = {
     CONF_VOLTAGE: sensor.sensor_schema(
@@ -77,6 +75,7 @@ PHASE_SENSORS = {
         state_class=STATE_CLASS_MEASUREMENT,
     ),
 }
+
 PV_SENSORS = {
     CONF_VOLTAGE: sensor.sensor_schema(
         unit_of_measurement=UNIT_VOLT,
@@ -98,12 +97,8 @@ PV_SENSORS = {
     ),
 }
 
-PHASE_SCHEMA = cv.Schema(
-    {cv.Optional(sensor): schema for sensor, schema in PHASE_SENSORS.items()}
-)
-PV_SCHEMA = cv.Schema(
-    {cv.Optional(sensor): schema for sensor, schema in PV_SENSORS.items()}
-)
+PHASE_SCHEMA = cv.Schema({cv.Optional(sensor): schema for sensor, schema in PHASE_SENSORS.items()})
+PV_SCHEMA = cv.Schema({cv.Optional(sensor): schema for sensor, schema in PV_SENSORS.items()})
 
 CONFIG_SCHEMA = (
     cv.Schema(
@@ -168,45 +163,54 @@ CONFIG_SCHEMA = (
                 device_class=DEVICE_CLASS_ENERGY,
                 state_class=STATE_CLASS_TOTAL_INCREASING,
             ),
-
         }
     )
     .extend(cv.polling_component_schema("1s"))
     .extend(uart.UART_DEVICE_SCHEMA)
 )
 
+
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
 
-    for key, conf in config.items():
-        if not isinstance(conf, dict) or not CONF_ID in conf:
-            continue
-        if key == CONF_FLOW_CONTROL_PIN:
-            continue
-        sens = await sensor.new_sensor(config[key])
-        cg.add(getattr(var, f"set_{key}_sensor")(sens))
-
+    # flow control pin
     flow_control_pin = await cg.gpio_pin_expression(config[CONF_FLOW_CONTROL_PIN])
     cg.add(var.set_fc_pin(flow_control_pin))
 
-    for i, phase in enumerate([CONF_PHASE_A, CONF_PHASE_B, CONF_PHASE_C]):
-        if phase not in config:
-            continue
+    # simple top-level sensors
+    for key in [
+        CONF_INVERTER_STATUS,
+        CONF_LOADS_POWER,
+        CONF_GRID_POWER,
+        CONF_GENERATION_POWER,
+        CONF_INVERTER_TEMP,
+        CONF_AMBIENT_TEMP,
+        CONF_BOOST_TEMP,
+        CONF_ENERGY_PRODUCTION_DAY,
+        CONF_TOTAL_ENERGY_PRODUCTION,
+    ]:
+        if key in config:
+            sens = await sensor.new_sensor(config[key])
+            cg.add(getattr(var, f"set_{key}_sensor")(sens))
 
-        phase_config = config[phase]
+    # phases (A, B, C)
+    for i, phase_key in enumerate([CONF_PHASE_A, CONF_PHASE_B, CONF_PHASE_C]):
+        if phase_key not in config:
+            continue
+        phase_conf = config[phase_key]
         for sensor_type in PHASE_SENSORS:
-            if sensor_type in phase_config:
-                sens = await sensor.new_sensor(phase_config[sensor_type])
+            if sensor_type in phase_conf:
+                sens = await sensor.new_sensor(phase_conf[sensor_type])
                 cg.add(getattr(var, f"set_phase_{sensor_type}_sensor")(i, sens))
 
-    for i, pv in enumerate([CONF_PV1, CONF_PV2, CONF_PV3, CONF_PV4]):
-        if pv not in config:
+    # PVs (1..4)
+    for i, pv_key in enumerate([CONF_PV1, CONF_PV2, CONF_PV3, CONF_PV4]):
+        if pv_key not in config:
             continue
-
-        pv_config = config[pv]
-        for sensor_type in pv_config:
-            if sensor_type in pv_config:
-                sens = await sensor.new_sensor(pv_config[sensor_type])
+        pv_conf = config[pv_key]
+        for sensor_type in PV_SENSORS:
+            if sensor_type in pv_conf:
+                sens = await sensor.new_sensor(pv_conf[sensor_type])
                 cg.add(getattr(var, f"set_pv_{sensor_type}_sensor")(i, sens))
