@@ -175,28 +175,53 @@ void FoxessSolar::parse_message() {
   const std::size_t total_len = this->buffer_end + 1;
   auto &msg = this->input_buffer;
 
-  if (total_len != 163) {
-    ESP_LOGW(TAG, "unexpected message length: %u (expected 163)", (unsigned) total_len);
-    this->status_set_warning();
+  // Determine offset shift based on payload length.
+  // Extended frame models (e.g. T10-G3) send 6 extra bytes at position 15,
+  // shifting all subsequent fields. Detected via the payload length field.
+  const uint16_t payload_len = decode_uint16(msg[7], msg[8]);
+  const std::size_t shift =
+      (payload_len >= EXTENDED_FRAME_MIN_PAYLOAD) ? EXTENDED_FRAME_EXTRA_BYTES : 0;
+
+  if (shift > 0) {
+    ESP_LOGVV(TAG, "extended frame detected (payload=%u), offset shift: +%u",
+              payload_len, (unsigned) shift);
   }
 
-  // powers
+  // Minimum length check (accounting for potential shift)
+  const std::size_t min_len = MsgOffset::ERROR_BLOCK_END + shift;
+  if (total_len < min_len) {
+    ESP_LOGW(TAG, "message too short: %u (need at least %u)", (unsigned) total_len, (unsigned) min_len);
+    this->status_set_warning();
+    return;
+  }
+
+  // powers (bytes 9-14 are always at fixed positions)
   publish_sensor_state(this->grid_power_,
                        decode_int16(msg[MsgOffset::GRID_POWER_MSB],
                                     msg[MsgOffset::GRID_POWER_LSB]),
                        1.0f);
-  publish_sensor_state(this->generation_power_,
-                       decode_uint16(msg[MsgOffset::GEN_POWER_MSB],
-                                     msg[MsgOffset::GEN_POWER_LSB]),
-                       1.0f);
+
+  // Generation power: on extended frames, the actual value is at byte 15-16
+  // (the standard position 11-12 reports 0 on these models).
+  if (shift > 0) {
+    publish_sensor_state(this->generation_power_,
+                         decode_uint16(msg[15], msg[16]),
+                         1.0f);
+  } else {
+    publish_sensor_state(this->generation_power_,
+                         decode_uint16(msg[MsgOffset::GEN_POWER_MSB],
+                                       msg[MsgOffset::GEN_POWER_LSB]),
+                         1.0f);
+  }
+
   publish_sensor_state(this->loads_power_,
                        decode_int16(msg[MsgOffset::LOAD_POWER_MSB],
                                     msg[MsgOffset::LOAD_POWER_LSB]),
                        1.0f);
 
-  // phases
+  // phases (shifted on extended frames)
   for (std::size_t i = 0; i < 3; i++) {
-    const std::size_t base = MsgOffset::PHASE1_BASE + i * MsgOffset::PHASE_STRIDE;
+    const std::size_t base = MsgOffset::PHASE1_BASE + shift + i * MsgOffset::PHASE_STRIDE;
     auto &ph = this->phases_[i];
 
     publish_sensor_state(ph.voltage_sensor_,   decode_uint16(msg[base + 0], msg[base + 1]), 0.1f);
@@ -205,9 +230,9 @@ void FoxessSolar::parse_message() {
     publish_sensor_state(ph.active_power_sensor_, decode_uint16(msg[base + 6], msg[base + 7]), 1.0f);
   }
 
-  // pvs
+  // pvs (shifted on extended frames)
   for (std::size_t i = 0; i < 4; i++) {
-    const std::size_t base = MsgOffset::PV1_BASE + i * MsgOffset::PV_STRIDE;
+    const std::size_t base = MsgOffset::PV1_BASE + shift + i * MsgOffset::PV_STRIDE;
     const uint16_t volt = decode_uint16(msg[base + 0], msg[base + 1]);
     const uint16_t amps = decode_uint16(msg[base + 2], msg[base + 3]);
     auto &pv = this->pvs_[i];
@@ -219,35 +244,35 @@ void FoxessSolar::parse_message() {
                          0.01f);
   }
 
-  // temps
+  // temps (shifted on extended frames)
   publish_sensor_state(this->boost_temp_,
-                       decode_int16(msg[MsgOffset::BOOST_TEMP_MSB],
-                                    msg[MsgOffset::BOOST_TEMP_LSB]),
+                       decode_int16(msg[MsgOffset::BOOST_TEMP_MSB + shift],
+                                    msg[MsgOffset::BOOST_TEMP_LSB + shift]),
                        1.0f);
   publish_sensor_state(this->inverter_temp_,
-                       decode_int16(msg[MsgOffset::INVERTER_TEMP_MSB],
-                                    msg[MsgOffset::INVERTER_TEMP_LSB]),
+                       decode_int16(msg[MsgOffset::INVERTER_TEMP_MSB + shift],
+                                    msg[MsgOffset::INVERTER_TEMP_LSB + shift]),
                        1.0f);
   publish_sensor_state(this->ambient_temp_,
-                       decode_int16(msg[MsgOffset::AMBIENT_TEMP_MSB],
-                                    msg[MsgOffset::AMBIENT_TEMP_LSB]),
+                       decode_int16(msg[MsgOffset::AMBIENT_TEMP_MSB + shift],
+                                    msg[MsgOffset::AMBIENT_TEMP_LSB + shift]),
                        1.0f);
 
-  // energy
+  // energy (shifted on extended frames)
   publish_sensor_state(this->energy_production_day_,
-                       decode_uint16(msg[MsgOffset::ENERGY_DAY_MSB],
-                                     msg[MsgOffset::ENERGY_DAY_LSB]),
+                       decode_uint16(msg[MsgOffset::ENERGY_DAY_MSB + shift],
+                                     msg[MsgOffset::ENERGY_DAY_LSB + shift]),
                        0.1f);
   publish_sensor_state(this->total_energy_production_,
-                       decode_uint32(msg[MsgOffset::TOTAL_ENERGY_MSB0],
-                                     msg[MsgOffset::TOTAL_ENERGY_MSB0 + 1],
-                                     msg[MsgOffset::TOTAL_ENERGY_MSB0 + 2],
-                                     msg[MsgOffset::TOTAL_ENERGY_MSB0 + 3]),
+                       decode_uint32(msg[MsgOffset::TOTAL_ENERGY_MSB0 + shift],
+                                     msg[MsgOffset::TOTAL_ENERGY_MSB0 + shift + 1],
+                                     msg[MsgOffset::TOTAL_ENERGY_MSB0 + shift + 2],
+                                     msg[MsgOffset::TOTAL_ENERGY_MSB0 + shift + 3]),
                        0.1f);
 
-  // error block check
-  if (!std::all_of(msg.begin() + MsgOffset::ERROR_BLOCK_BEGIN,
-                   msg.begin() + MsgOffset::ERROR_BLOCK_END,
+  // error block check (shifted on extended frames)
+  if (!std::all_of(msg.begin() + MsgOffset::ERROR_BLOCK_BEGIN + shift,
+                   msg.begin() + MsgOffset::ERROR_BLOCK_END + shift,
                    [](uint8_t b) { return b == 0; })) {
     this->set_inverter_mode(2);  // ERROR
     return;
