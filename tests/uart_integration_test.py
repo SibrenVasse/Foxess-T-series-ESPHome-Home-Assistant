@@ -93,21 +93,12 @@ def check_uart(process, log, uart):
     os.write(uart, telemetry_frame(163, 3500))
     wait_for_state(process, log, "Generation", 3500)
 
-    # The captured 245-byte T10-G3 frame uses the same field offsets as the 163-byte frame.
-    captured = bytes.fromhex((FIXTURES / "t10-g3-original.hex").read_text())
-    os.write(uart, captured)
-    states = wait_for_state(process, log, "Total Energy", 2185)
-    assert states["Generation"][-1] == 6120
-    assert math.isclose(states["Phase Voltage"][-1], 239.5, rel_tol=1e-6)
-    assert math.isclose(states["PV Power"][-1], 5124.48, rel_tol=1e-6)
-    assert states["Daily Energy"][-1] == 13
-
     os.write(uart, telemetry_frame(251, 2300, fault=True))
     states = wait_for_state(process, log, "Mode", 2)
-    assert states["Generation"] == [0, 3500, 6120, 2300]
+    assert states["Generation"] == [0, 3500, 2300]
     assert math.isclose(states["Phase Voltage"][-1], 241.3, rel_tol=1e-6)
     assert math.isclose(states["PV Power"][-1], 6780, rel_tol=1e-6)
-    assert len(states["Daily Energy"]) == len(states["Total Energy"]) == 4
+    assert len(states["Daily Energy"]) == len(states["Total Energy"]) == 3
     assert math.isclose(states["Daily Energy"][-1], 32.1, rel_tol=1e-6)
     assert math.isclose(states["Total Energy"][-1], 0xF0000000 * 0.1, rel_tol=1e-6)
     energy_states = (states["Daily Energy"], states["Total Energy"])
@@ -116,7 +107,7 @@ def check_uart(process, log, uart):
     os.write(uart, telemetry_frame(162, 9999))
     states = wait_for_state(process, log, "PV Power", math.nan)
     assert states["Mode"] == [99, 1, 2, 0]
-    assert states["Generation"][:-1] == [0, 3500, 6120, 2300]
+    assert states["Generation"][:-1] == [0, 3500, 2300]
     for name in ("Generation", "Grid", "Phase Voltage", "PV Power"):
         assert math.isnan(states[name][-1])
     assert (states["Daily Energy"], states["Total Energy"]) == energy_states
@@ -125,6 +116,55 @@ def check_uart(process, log, uart):
     states = wait_for_state(process, log, "Mode", 1)
     assert states["Mode"] == [99, 1, 2, 0, 1]
     assert states["Generation"][-1] == 123
+    return states
+
+
+def check_captured_telemetry(process, log, uart, states):
+    captures = (
+        (
+            ("f3000-firmware.hex", "f3000-identification.hex", "f3000-telemetry.hex"),
+            {
+                "Grid": -1200,
+                "Generation": 2450,
+                "Loads": 1250,
+                "Phase Voltage": 231.6,
+                "Phase Current": 10.6,
+                "Phase Frequency": 49.98,
+                "Phase Power": 2450,
+                "PV Voltage": 370.0,
+                "PV Current": 7.0,
+                "PV Power": 2590,
+                "Inverter Temperature": 31,
+                "Daily Energy": 12.4,
+                "Total Energy": 2345.6,
+            },
+        ),
+        (
+            ("t10-g3-original.hex",),
+            {
+                "Generation": 6120,
+                "Phase Voltage": 239.5,
+                "Phase Frequency": 49.99,
+                "PV Power": 5124.48,
+                "Daily Energy": 13,
+                "Total Energy": 2185,
+            },
+        ),
+    )
+
+    published_frames = len(states["Generation"])
+    for names, readings in captures:
+        stream = b"".join(bytes.fromhex((FIXTURES / name).read_text()) for name in names)
+        os.write(uart, stream)
+        # The lifetime counter is published after the other readings.
+        states = wait_for_state(process, log, "Total Energy", readings["Total Energy"])
+        published_frames += 1
+        assert len(states["Generation"]) == published_frames, names
+        for sensor, expected in readings.items():
+            actual = states[sensor][-1]
+            assert math.isclose(actual, expected, rel_tol=1e-6), (
+                f"{names[-1]} published {actual} for {sensor}, expected {expected}"
+            )
 
 
 def main():
@@ -187,12 +227,26 @@ sensor:
       name: "Generation"
     grid_power:
       name: "Grid"
+    loads_power:
+      name: "Loads"
     phase_a:
       voltage:
         name: "Phase Voltage"
+      current:
+        name: "Phase Current"
+      frequency:
+        name: "Phase Frequency"
+      active_power:
+        name: "Phase Power"
     pv1:
+      voltage:
+        name: "PV Voltage"
+      current:
+        name: "PV Current"
       active_power:
         name: "PV Power"
+    inverter_temp:
+      name: "Inverter Temperature"
     energy_production_day:
       name: "Daily Energy"
     total_energy_production:
@@ -205,7 +259,8 @@ sensor:
         with log.open("wb") as output:
             process = subprocess.Popen([program], cwd=work, stdout=output, stderr=subprocess.STDOUT)
             try:
-                check_uart(process, log, uart)
+                states = check_uart(process, log, uart)
+                check_captured_telemetry(process, log, uart, states)
             finally:
                 process.terminate()
                 process.wait(timeout=5)

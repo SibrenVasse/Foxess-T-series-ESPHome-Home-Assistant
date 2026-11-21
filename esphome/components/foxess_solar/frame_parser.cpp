@@ -19,7 +19,7 @@ constexpr uint32_t FRAME_OVERHEAD = HEADER_SIZE + CHECKSUM_SIZE + FRAME_FOOTER.s
 constexpr uint32_t INTER_BYTE_TIMEOUT_MS = 100;
 
 // Recovery can leave a partial frame behind a validated frame in the buffer.
-static_assert(FoxessFrameParser::MAX_FRAME_SIZE < 2 * FoxessFrameParser::STANDARD_FRAME_SIZE,
+static_assert(FoxessFrameParser::MAX_FRAME_SIZE < 2 * FoxessFrameParser::ORIGINAL_LAYOUT_FRAME_SIZE_163,
               "The parser buffers at most one complete frame");
 
 std::size_t supported_frame_size(const uint8_t *header) {
@@ -28,9 +28,9 @@ std::size_t supported_frame_size(const uint8_t *header) {
       (static_cast<uint32_t>(header[PAYLOAD_LENGTH_OFFSET]) << 8) | header[PAYLOAD_LENGTH_OFFSET + 1];
   const uint32_t frame_size = payload_size + FRAME_OVERHEAD;
   switch (frame_size) {
-    case FoxessFrameParser::STANDARD_FRAME_SIZE:
-    case FoxessFrameParser::LONG_STANDARD_FRAME_SIZE:
-    case FoxessFrameParser::SHIFTED_FRAME_SIZE:
+    case FoxessFrameParser::ORIGINAL_LAYOUT_FRAME_SIZE_163:
+    case FoxessFrameParser::ORIGINAL_LAYOUT_FRAME_SIZE_245:
+    case FoxessFrameParser::SHIFTED_LAYOUT_FRAME_SIZE_251:
       return frame_size;
     default:
       return 0;

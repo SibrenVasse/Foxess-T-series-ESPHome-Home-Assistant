@@ -17,10 +17,10 @@ namespace foxess_solar {
  */
 class FoxessFrameParser {
  public:
-  static constexpr std::size_t STANDARD_FRAME_SIZE = 163;
-  static constexpr std::size_t LONG_STANDARD_FRAME_SIZE = 245;
-  static constexpr std::size_t SHIFTED_FRAME_SIZE = 251;
-  static constexpr std::size_t MAX_FRAME_SIZE = SHIFTED_FRAME_SIZE;
+  static constexpr std::size_t ORIGINAL_LAYOUT_FRAME_SIZE_163 = 163;
+  static constexpr std::size_t ORIGINAL_LAYOUT_FRAME_SIZE_245 = 245;
+  static constexpr std::size_t SHIFTED_LAYOUT_FRAME_SIZE_251 = 251;
+  static constexpr std::size_t MAX_FRAME_SIZE = SHIFTED_LAYOUT_FRAME_SIZE_251;
 
   /// View of a validated frame in parser-owned storage.
   struct Frame {
@@ -28,7 +28,7 @@ class FoxessFrameParser {
     std::size_t size;
 
     /// Return true for the measurement layout with six inserted bytes.
-    bool uses_shifted_layout() const { return this->size == SHIFTED_FRAME_SIZE; }
+    bool uses_shifted_layout() const { return this->size == SHIFTED_LAYOUT_FRAME_SIZE_251; }
   };
 
   /// Outcome of advancing the parser or expiring an incomplete frame.
