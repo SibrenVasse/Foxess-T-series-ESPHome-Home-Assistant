@@ -29,6 +29,7 @@ std::size_t supported_frame_size(const uint8_t *header) {
   const uint32_t frame_size = payload_size + FRAME_OVERHEAD;
   switch (frame_size) {
     case FoxessFrameParser::ORIGINAL_LAYOUT_FRAME_SIZE_163:
+    case FoxessFrameParser::ORIGINAL_LAYOUT_FRAME_SIZE_165:
     case FoxessFrameParser::ORIGINAL_LAYOUT_FRAME_SIZE_245:
     case FoxessFrameParser::SHIFTED_LAYOUT_FRAME_SIZE_251:
       return frame_size;

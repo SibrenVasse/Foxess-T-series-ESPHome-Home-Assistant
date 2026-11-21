@@ -28,6 +28,7 @@ template<std::size_t Size> std::array<uint8_t, Size> make_frame(uint16_t checksu
 
 // Checksums for these fixtures are calculated independently of the parser.
 const auto STANDARD = make_frame<163>(0x0BAE);
+const auto ORIGINAL_165 = make_frame<165>(0x0316);
 const auto LONG_STANDARD = make_frame<245>(0x8F0D);
 const auto SHIFTED = make_frame<251>(0xC6D2);
 
@@ -58,6 +59,8 @@ void accepts_complete_frames_without_gaps() {
   assert(feed(parser, STANDARD.data(), STANDARD.size() - 1) == Result::WAITING);
   assert(parser.feed(STANDARD.back(), 1) == Result::FRAME_READY);
   expect_frame(parser, STANDARD);
+  assert(feed(parser, ORIGINAL_165) == Result::FRAME_READY);
+  expect_frame(parser, ORIGINAL_165);
   assert(feed(parser, LONG_STANDARD) == Result::FRAME_READY);
   expect_frame(parser, LONG_STANDARD);
   assert(feed(parser, SHIFTED) == Result::FRAME_READY);
@@ -74,7 +77,7 @@ void rejects_unsupported_frames() {
   assert(feed(parser, short_frame.data(), header_size) == Result::INVALID_LENGTH);
   assert(feed(parser, short_frame.data() + header_size, short_frame.size() - header_size) == Result::WAITING);
 
-  constexpr std::array<uint16_t, 9> invalid_lengths{0, 151, 231, 233, 237, 239, 243, 65523, 65535};
+  constexpr std::array<uint16_t, 10> invalid_lengths{0, 151, 153, 231, 233, 237, 239, 243, 65523, 65535};
   for (uint16_t length : invalid_lengths) {
     const std::array<uint8_t, header_size> header{
         0x7E, 0x7E, 0x02, 0, 0, 0, 0, static_cast<uint8_t>(length >> 8), static_cast<uint8_t>(length)};

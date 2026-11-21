@@ -7,9 +7,10 @@ Compatible with:
 - Foxess T-series (including T10-G3 and other extended-frame models)
 - Foxess F-series
 
-The decoder uses the original measurement offsets for 163- and 245-byte frames.
+The decoder uses the original measurement offsets for 163-, 165-, and 245-byte frames.
+[165-byte capture](https://community.home-assistant.io/t/foxess-inverter-modbus/459313/42) [245-byte capture](https://community.home-assistant.io/t/foxess-inverter-modbus/459313/22)
+
 A 251-byte frame uses the six-byte shift reported for later T10-G3 firmware.
-[245-byte capture](https://community.home-assistant.io/t/foxess-inverter-modbus/459313/22)
 [251-byte field report](https://community.home-assistant.io/t/foxess-inverter-modbus/459313?page=9)
 
 ```yaml

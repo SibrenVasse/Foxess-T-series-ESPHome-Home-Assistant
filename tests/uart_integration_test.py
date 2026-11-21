@@ -140,6 +140,18 @@ def check_captured_telemetry(process, log, uart, states):
             },
         ),
         (
+            ("t-series-original-165.hex",),
+            {
+                "Generation": 25,
+                "Phase Voltage": 232.8,
+                "Phase Frequency": 49.95,
+                "PV Voltage": 172.3,
+                "Inverter Temperature": 21,
+                "Daily Energy": 0,
+                "Total Energy": 566.1,
+            },
+        ),
+        (
             ("t10-g3-original.hex",),
             {
                 "Generation": 6120,

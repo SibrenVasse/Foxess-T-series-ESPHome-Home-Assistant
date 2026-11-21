@@ -10,14 +10,15 @@ namespace foxess_solar {
 /**
  * @brief Extracts validated FoxESS telemetry frames from a UART byte stream.
  *
- * Each instance tracks one stream. Type 0x02 frames of 163 or 245 bytes use the
- * original layout, and 251-byte frames use the shifted layout.
+ * Each instance tracks one stream. Type 0x02 frames of 163, 165, or 245 bytes
+ * use the original layout, and 251-byte frames use the shifted layout.
  * Feed each queued byte, then call expire() after draining the UART.
  * Read frame() immediately whenever either operation returns FRAME_READY.
  */
 class FoxessFrameParser {
  public:
   static constexpr std::size_t ORIGINAL_LAYOUT_FRAME_SIZE_163 = 163;
+  static constexpr std::size_t ORIGINAL_LAYOUT_FRAME_SIZE_165 = 165;
   static constexpr std::size_t ORIGINAL_LAYOUT_FRAME_SIZE_245 = 245;
   static constexpr std::size_t SHIFTED_LAYOUT_FRAME_SIZE_251 = 251;
   static constexpr std::size_t MAX_FRAME_SIZE = SHIFTED_LAYOUT_FRAME_SIZE_251;
