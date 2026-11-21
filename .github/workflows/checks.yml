@@ -1,0 +1,23 @@
+name: Checks
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test frame parsing with sanitizers
+        run: bash tests/run_parser_tests.sh
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install ESPHome
+        run: python -m pip install "esphome==2026.11.0"
+      - name: Test UART and sensor behavior
+        run: python tests/uart_integration_test.py
+      - name: Validate and compile the ESP32 example
+        run: bash tests/build_example.sh

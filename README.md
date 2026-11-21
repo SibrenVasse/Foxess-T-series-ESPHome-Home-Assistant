@@ -17,9 +17,10 @@ uart:
   tx_pin: GPIO16
   rx_pin: GPIO17
   baud_rate: 9600
+  rx_buffer_size: 512
 
 sensor:
-   - platform: foxess_solar
+  - platform: foxess_solar
     phase_a:
       voltage:
         name: "FoxESS Phase A Voltage"
@@ -62,13 +63,15 @@ sensor:
 ```
 
 ## Instructions
-- Copy the example YAML files to your ESPHome directory in Home Assistant
+
+- Copy the example YAML files to your ESPHome directory in Home Assistant and remove the `.example` suffix.
+- Copy the `esphome/components` directory from the same checkout next to the YAML, at `esphome/components`.
 - Fill out individual data in the secrets.yaml file (SSID, password, etc.)
 - Optionally comment sensors you don't need or uncomment sensors you do need
 
 ## Configuration variables
 
-- **uart_id** (*Optional*, ID): Manually specify the ID of the UART hub.
+- **uart_id** selects a UART hub configured for 9600 baud with an RX pin.
 - **flow_control_pin** selects the GPIO that holds the MAX485 transceiver in receive mode at startup. Defaults to GPIO4.
 - **inverter_timeout** sets how long to wait for a valid frame before reporting the inverter offline. It defaults to five minutes and accepts a minimum of one second. The offline transition happens on the next polling update after the timeout. Live measurements report `NaN` while offline, and energy counters keep their last valid readings.
 - **update_interval** sets how often the component checks for a communication timeout. Defaults to one second. UART reception runs in the main loop.
@@ -109,6 +112,13 @@ Run the frame parser tests with a C++17 compiler and the address and undefined b
 
 ```sh
 bash tests/run_parser_tests.sh
+```
+
+With ESPHome 2026.11.0 installed, run the host UART test and build the ESP32 example.
+
+```sh
+python tests/uart_integration_test.py
+bash tests/build_example.sh
 ```
 
 ## Hardware setup

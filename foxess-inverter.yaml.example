@@ -8,11 +8,8 @@ esp32:
 
 external_components:
   - source:
-      type: git
-      url: https://github.com/assembly12/Foxess-T-series-ESPHome-Home-Assistant
-#  - source:
-#      type: local
-#      path: "esphome/components"
+      type: local
+      path: esphome/components
 
 # Enable logging
 logger:
@@ -49,6 +46,7 @@ uart:
   tx_pin: GPIO16
   rx_pin: GPIO17
   baud_rate: 9600
+  rx_buffer_size: 512
 
 button:
   - platform: restart
