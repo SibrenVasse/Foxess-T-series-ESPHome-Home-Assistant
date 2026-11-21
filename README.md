@@ -7,6 +7,11 @@ Compatible with:
 - Foxess T-series (including T10-G3 and other extended-frame models)
 - Foxess F-series
 
+The decoder uses the original measurement offsets for 163- and 245-byte frames.
+A 251-byte frame uses the six-byte shift reported for later T10-G3 firmware.
+[245-byte capture](https://community.home-assistant.io/t/foxess-inverter-modbus/459313/22)
+[251-byte field report](https://community.home-assistant.io/t/foxess-inverter-modbus/459313?page=9)
+
 ```yaml
 uart:
   tx_pin: GPIO16
@@ -61,9 +66,11 @@ sensor:
 - Fill out individual data in the secrets.yaml file (SSID, password, etc.)
 - Optionally comment sensors you don't need or uncomment sensors you do need
 
-## Configuration variables:
+## Configuration variables
+
 - **uart_id** (*Optional*, ID): Manually specify the ID of the UART hub.
-- **flow_control_pin** (*Optional*, Pin): The pin used to switch the direction of the MAX485 transceiver. Defaults to GPIO4.
+- **flow_control_pin** selects the GPIO that holds the MAX485 transceiver in receive mode at startup. Defaults to GPIO4.
+- **update_interval** sets how often the component checks for a communication timeout. Defaults to one second. UART reception runs in the main loop.
 - **inverter_status** (*Optional*): Status code of the inverter (0: offline, 1: online, 2: error, 99: waiting for response)
 - **phase_a** (*Optional*): Sensors related to first phase of the inverter
   - **current** (*Optional*): Current flowing to the grid (A)
@@ -94,6 +101,14 @@ sensor:
 - **inverter_temp** (*Optional*): Inverter temperature (°C)
 - **boost_temp** (*Optional*): Boost temperature (°C)
 - **ambient_temp** (*Optional*): Ambient temperature (°C)
+
+## Development checks
+
+Run the frame parser tests with a C++17 compiler and the address and undefined behavior sanitizers.
+
+```sh
+bash tests/run_parser_tests.sh
+```
 
 ## Hardware setup
 The hardware setup including a wiring diagram can be found in the [Wiki](https://github.com/assembly12/Foxess-T-series-ESPHome-Home-Assistant/wiki/Hardware-setup).

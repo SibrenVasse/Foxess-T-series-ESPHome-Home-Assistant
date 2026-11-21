@@ -1,10 +1,9 @@
 #pragma once
 
-#include "esphome/core/component.h"
+#include "frame_parser.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/uart/uart.h"
-#include <array>
-#include <cstddef>
+#include "esphome/core/component.h"
 
 #define SENSOR_SETTER(X) \
   void set_##X##_sensor(sensor::Sensor *sensor) { this->X##_ = sensor; }
@@ -20,62 +19,25 @@
 namespace esphome {
 namespace foxess_solar {
 
-static const long INVERTER_TIMEOUT = 300000;  // ms
-static const std::size_t BUFFER_SIZE = 256;
-
-static const std::array<uint8_t, 3> MSG_HEADER = {0x7E, 0x7E, 0x02};
-static const std::array<uint8_t, 2> MSG_FOOTER = {0xE7, 0xE7};
-
-// Base offsets for the standard T-series frame format.
-// Some models (e.g. T10-G3) send an extended frame with 6 extra bytes at
-// position 15-20, shifting all subsequent fields. This is auto-detected at
-// runtime based on the payload length.
-struct MsgOffset {
-  // powers (always at fixed positions)
-  static constexpr std::size_t GRID_POWER_MSB    = 9;
-  static constexpr std::size_t GRID_POWER_LSB    = 10;
-  static constexpr std::size_t GEN_POWER_MSB     = 11;
-  static constexpr std::size_t GEN_POWER_LSB     = 12;
-  static constexpr std::size_t LOAD_POWER_MSB    = 13;
-  static constexpr std::size_t LOAD_POWER_LSB    = 14;
-
-  // phases (base offsets before any shift)
-  static constexpr std::size_t PHASE1_BASE       = 15;  // 15..22
-  static constexpr std::size_t PHASE_STRIDE      = 8;   // 23, 31
-
-  // PVs
-  static constexpr std::size_t PV1_BASE          = 39;  // 39..42
-  static constexpr std::size_t PV_STRIDE         = 6;   // 45, 51, 57
-
-  // temps
-  static constexpr std::size_t BOOST_TEMP_MSB    = 63;
-  static constexpr std::size_t BOOST_TEMP_LSB    = 64;
-  static constexpr std::size_t INVERTER_TEMP_MSB = 65;
-  static constexpr std::size_t INVERTER_TEMP_LSB = 66;
-  static constexpr std::size_t AMBIENT_TEMP_MSB  = 67;
-  static constexpr std::size_t AMBIENT_TEMP_LSB  = 68;
-
-  // energy
-  static constexpr std::size_t ENERGY_DAY_MSB    = 69;
-  static constexpr std::size_t ENERGY_DAY_LSB    = 70;
-  static constexpr std::size_t TOTAL_ENERGY_MSB0 = 71;  // 71..74
-
-  // error block
-  static constexpr std::size_t ERROR_BLOCK_BEGIN = 125;
-  static constexpr std::size_t ERROR_BLOCK_END   = 157; // exclusive
-};
-
-// Extended frame detection (T10-G3 and similar models).
-// These inverters insert 6 extra bytes at position 15 containing the actual
-// generation power, shifting all subsequent fields by +6.
-static constexpr std::size_t EXTENDED_FRAME_EXTRA_BYTES = 6;
-static constexpr uint16_t EXTENDED_FRAME_MIN_PAYLOAD = 232;
-
+/**
+ * @brief Receives FoxESS telemetry and publishes the configured sensor readings.
+ *
+ * ESPHome owns the UART, GPIO, and sensors and binds them before setup().
+ * The main loop drains the UART. The polling interval controls when the
+ * component checks for lost communication.
+ */
 class FoxessSolar : public PollingComponent, public uart::UARTDevice {
  public:
+  /// Initialize the RS485 receiver and start the communication timer.
   void setup() override;
+  /// Consume buffered UART bytes and publish complete, validated frames.
+  void loop() override;
+  /// Check for lost telemetry and publish the offline state.
   void update() override;
 
+  /// @name Inverter sensor bindings
+  /// The status sensor reports 0 for offline, 1 for online, and 2 for a fault.
+  /// @{
   SENSOR_SETTER(loads_power)
   SENSOR_SETTER(grid_power)
   SENSOR_SETTER(generation_power)
@@ -85,34 +47,41 @@ class FoxessSolar : public PollingComponent, public uart::UARTDevice {
   SENSOR_SETTER(energy_production_day)
   SENSOR_SETTER(total_energy_production)
   SENSOR_SETTER(inverter_status)
+  /// @}
 
+  /// @name AC phase sensor bindings
+  /// Use zero-based indices 0 through 2 for phases A through C.
+  /// @{
   PHASE_SENSOR_SETTER(voltage)
   PHASE_SENSOR_SETTER(current)
   PHASE_SENSOR_SETTER(active_power)
   PHASE_SENSOR_SETTER(frequency)
+  /// @}
 
+  /// @name PV input sensor bindings
+  /// Use zero-based indices 0 through 3 for inputs PV1 through PV4.
+  /// @{
   PV_SENSOR_SETTER(voltage)
   PV_SENSOR_SETTER(current)
   PV_SENSOR_SETTER(active_power)
+  /// @}
 
+  /// Bind the GPIO that holds the RS485 transceiver in receive mode.
   void set_fc_pin(GPIOPin *flow_control_pin) { this->flow_control_pin_ = flow_control_pin; }
 
- protected:
-  void parse_message();
-  void set_inverter_mode(uint32_t mode);
-  optional<bool> check_msg();
+ private:
+  enum class InverterMode : uint8_t { OFFLINE = 0, ONLINE = 1, FAULT = 2, WAITING = 99 };
 
-  // now just simple helpers, no span:
-  void publish_zero_phases();
-  void publish_zero_pvs();
+  void handle_frame_result(FoxessFrameParser::Result result);
+  void publish_frame(const FoxessFrameParser::Frame &frame);
+  void set_inverter_mode(InverterMode mode);
 
   GPIOPin *flow_control_pin_{nullptr};
-  uint32_t millis_lastmessage_{0};
-  std::array<uint8_t, BUFFER_SIZE> input_buffer{};
-  std::size_t buffer_end{0};
+  uint32_t last_frame_ms_{0};
+  FoxessFrameParser parser_;
 
-  uint32_t inverter_mode_{99};
-  sensor::Sensor *inverter_status_{nullptr};  // 0=Offline, 1=Online, 2=Error, 99=Waiting...
+  InverterMode inverter_mode_{InverterMode::WAITING};
+  sensor::Sensor *inverter_status_{nullptr};
 
   struct SolarPhase {
     sensor::Sensor *voltage_sensor_{nullptr};
