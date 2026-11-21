@@ -11,7 +11,6 @@ namespace foxess_solar {
 namespace {
 
 static const char *const TAG = "foxess_solar";
-constexpr uint32_t INVERTER_TIMEOUT_MS = 300000;
 
 // Field starts in the original layout. The shifted layout changes fields from PHASE1_BASE onward.
 struct MsgOffset {
@@ -63,6 +62,7 @@ void FoxessSolar::setup() {
   }
 
   this->last_frame_ms_ = millis();
+  publish_sensor_state(this->inverter_status_, static_cast<uint8_t>(this->inverter_mode_));
 }
 
 void FoxessSolar::loop() {
@@ -79,13 +79,13 @@ void FoxessSolar::loop() {
 void FoxessSolar::update() {
   // Base the offline transition on the last validated frame and publish it only once.
   const uint32_t now_ms = millis();
-  if (this->inverter_mode_ == InverterMode::OFFLINE || now_ms - this->last_frame_ms_ < INVERTER_TIMEOUT_MS) {
+  if (this->inverter_mode_ == InverterMode::OFFLINE || now_ms - this->last_frame_ms_ < this->inverter_timeout_ms_) {
     return;
   }
 
-  // Publish the offline readings and retain the last reported energy counters.
+  // Invalidate live readings and retain the last reported energy counters.
   this->set_inverter_mode(InverterMode::OFFLINE);
-  publish_sensor_state(this->generation_power_, 0);
+  publish_sensor_state(this->generation_power_, NAN);
   publish_sensor_state(this->grid_power_, NAN);
   publish_sensor_state(this->loads_power_, NAN);
   publish_sensor_state(this->boost_temp_, NAN);
@@ -93,15 +93,15 @@ void FoxessSolar::update() {
   publish_sensor_state(this->inverter_temp_, NAN);
 
   for (auto &phase : this->phases_) {
-    publish_sensor_state(phase.voltage_sensor_, 0);
-    publish_sensor_state(phase.current_sensor_, 0);
+    publish_sensor_state(phase.voltage_sensor_, NAN);
+    publish_sensor_state(phase.current_sensor_, NAN);
     publish_sensor_state(phase.frequency_sensor_, NAN);
-    publish_sensor_state(phase.active_power_sensor_, 0);
+    publish_sensor_state(phase.active_power_sensor_, NAN);
   }
   for (auto &pv : this->pvs_) {
-    publish_sensor_state(pv.voltage_sensor_, 0);
-    publish_sensor_state(pv.current_sensor_, 0);
-    publish_sensor_state(pv.active_power_sensor_, 0);
+    publish_sensor_state(pv.voltage_sensor_, NAN);
+    publish_sensor_state(pv.current_sensor_, NAN);
+    publish_sensor_state(pv.active_power_sensor_, NAN);
   }
 }
 
@@ -181,6 +181,9 @@ void FoxessSolar::publish_frame(const FoxessFrameParser::Frame &frame) {
 }
 
 void FoxessSolar::set_inverter_mode(InverterMode mode) {
+  if (mode == this->inverter_mode_) {
+    return;
+  }
   this->inverter_mode_ = mode;
   publish_sensor_state(this->inverter_status_, static_cast<uint8_t>(mode));
 }

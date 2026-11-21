@@ -28,15 +28,15 @@ namespace foxess_solar {
  */
 class FoxessSolar : public PollingComponent, public uart::UARTDevice {
  public:
-  /// Initialize the RS485 receiver and start the communication timer.
+  /// Initialize the RS485 receiver and publish the waiting status.
   void setup() override;
   /// Consume buffered UART bytes and publish complete, validated frames.
   void loop() override;
-  /// Check for lost telemetry and publish the offline state.
+  /// Mark live readings unavailable when no valid frame arrives within the timeout.
   void update() override;
 
   /// @name Inverter sensor bindings
-  /// The status sensor reports 0 for offline, 1 for online, and 2 for a fault.
+  /// The status sensor reports 0 for offline, 1 for online, 2 for a fault, and 99 while waiting.
   /// @{
   SENSOR_SETTER(loads_power)
   SENSOR_SETTER(grid_power)
@@ -69,6 +69,12 @@ class FoxessSolar : public PollingComponent, public uart::UARTDevice {
   /// Bind the GPIO that holds the RS485 transceiver in receive mode.
   void set_fc_pin(GPIOPin *flow_control_pin) { this->flow_control_pin_ = flow_control_pin; }
 
+  /**
+   * @brief Configure how long to wait for a valid telemetry frame.
+   * @param timeout_ms Interval in milliseconds, from 1000 through INT32_MAX.
+   */
+  void set_inverter_timeout(uint32_t timeout_ms) { this->inverter_timeout_ms_ = timeout_ms; }
+
  private:
   enum class InverterMode : uint8_t { OFFLINE = 0, ONLINE = 1, FAULT = 2, WAITING = 99 };
 
@@ -78,6 +84,7 @@ class FoxessSolar : public PollingComponent, public uart::UARTDevice {
 
   GPIOPin *flow_control_pin_{nullptr};
   uint32_t last_frame_ms_{0};
+  uint32_t inverter_timeout_ms_{300000};
   FoxessFrameParser parser_;
 
   InverterMode inverter_mode_{InverterMode::WAITING};

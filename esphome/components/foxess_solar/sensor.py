@@ -26,8 +26,10 @@ from esphome.const import (
     UNIT_VOLT,
     UNIT_WATT,
 )
+from esphome.core import TimePeriod
 
 CONF_FLOW_CONTROL_PIN = "flow_control_pin"
+CONF_INVERTER_TIMEOUT = "inverter_timeout"
 CONF_ENERGY_PRODUCTION_DAY = "energy_production_day"
 CONF_TOTAL_ENERGY_PRODUCTION = "total_energy_production"
 CONF_PV1 = "pv1"
@@ -105,6 +107,13 @@ CONFIG_SCHEMA = (
         {
             cv.GenerateID(): cv.declare_id(FoxessSolar),
             cv.Optional(CONF_FLOW_CONTROL_PIN, default="GPIO4"): pins.gpio_output_pin_schema,
+            cv.Optional(CONF_INVERTER_TIMEOUT, default="5min"): cv.All(
+                cv.positive_time_period_milliseconds,
+                cv.Range(
+                    min=TimePeriod(seconds=1),
+                    max=TimePeriod(milliseconds=0x7FFFFFFF),
+                ),
+            ),
             cv.Optional(CONF_PHASE_A): PHASE_SCHEMA,
             cv.Optional(CONF_PHASE_B): PHASE_SCHEMA,
             cv.Optional(CONF_PHASE_C): PHASE_SCHEMA,
@@ -174,6 +183,7 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
+    cg.add(var.set_inverter_timeout(config[CONF_INVERTER_TIMEOUT].total_milliseconds))
 
     # flow control pin
     flow_control_pin = await cg.gpio_pin_expression(config[CONF_FLOW_CONTROL_PIN])

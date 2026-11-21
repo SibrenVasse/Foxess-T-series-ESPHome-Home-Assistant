@@ -70,6 +70,7 @@ sensor:
 
 - **uart_id** (*Optional*, ID): Manually specify the ID of the UART hub.
 - **flow_control_pin** selects the GPIO that holds the MAX485 transceiver in receive mode at startup. Defaults to GPIO4.
+- **inverter_timeout** sets how long to wait for a valid frame before reporting the inverter offline. It defaults to five minutes and accepts a minimum of one second. The offline transition happens on the next polling update after the timeout. Live measurements report `NaN` while offline, and energy counters keep their last valid readings.
 - **update_interval** sets how often the component checks for a communication timeout. Defaults to one second. UART reception runs in the main loop.
 - **inverter_status** (*Optional*): Status code of the inverter (0: offline, 1: online, 2: error, 99: waiting for response)
 - **phase_a** (*Optional*): Sensors related to first phase of the inverter
