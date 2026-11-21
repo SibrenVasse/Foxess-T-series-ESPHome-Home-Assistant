@@ -26,9 +26,12 @@ static const std::size_t BUFFER_SIZE = 256;
 static const std::array<uint8_t, 3> MSG_HEADER = {0x7E, 0x7E, 0x02};
 static const std::array<uint8_t, 2> MSG_FOOTER = {0xE7, 0xE7};
 
-// All offsets in one place
+// Base offsets for the standard T-series frame format.
+// Some models (e.g. T10-G3) send an extended frame with 6 extra bytes at
+// position 15-20, shifting all subsequent fields. This is auto-detected at
+// runtime based on the payload length.
 struct MsgOffset {
-  // powers
+  // powers (always at fixed positions)
   static constexpr std::size_t GRID_POWER_MSB    = 9;
   static constexpr std::size_t GRID_POWER_LSB    = 10;
   static constexpr std::size_t GEN_POWER_MSB     = 11;
@@ -36,7 +39,7 @@ struct MsgOffset {
   static constexpr std::size_t LOAD_POWER_MSB    = 13;
   static constexpr std::size_t LOAD_POWER_LSB    = 14;
 
-  // phases
+  // phases (base offsets before any shift)
   static constexpr std::size_t PHASE1_BASE       = 15;  // 15..22
   static constexpr std::size_t PHASE_STRIDE      = 8;   // 23, 31
 
@@ -61,6 +64,12 @@ struct MsgOffset {
   static constexpr std::size_t ERROR_BLOCK_BEGIN = 125;
   static constexpr std::size_t ERROR_BLOCK_END   = 157; // exclusive
 };
+
+// Extended frame detection (T10-G3 and similar models).
+// These inverters insert 6 extra bytes at position 15 containing the actual
+// generation power, shifting all subsequent fields by +6.
+static constexpr std::size_t EXTENDED_FRAME_EXTRA_BYTES = 6;
+static constexpr uint16_t EXTENDED_FRAME_MIN_PAYLOAD = 232;
 
 class FoxessSolar : public PollingComponent, public uart::UARTDevice {
  public:

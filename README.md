@@ -4,7 +4,7 @@ Read out FoxESS Inverters to Home Assistant using ESPHome.
 ![FoxESS](resources/images/foxess.png)
 
 Compatible with:
-- Foxess T-series
+- Foxess T-series (including T10-G3 and other extended-frame models)
 - Foxess F-series
 
 ```yaml
