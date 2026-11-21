@@ -162,6 +162,30 @@ def check_captured_telemetry(process, log, uart, states):
                 "Total Energy": 2185,
             },
         ),
+        (
+            ("t10-g3-mqtt-firmware.hex", "t10-g3-mqtt-telemetry.hex"),
+            {
+                "Generation": 4361,
+                "Phase Voltage": 240.5,
+                "Phase Frequency": 50.0,
+                "PV Power": 3843,
+                "Inverter Temperature": 40,
+                "Daily Energy": 5.5,
+                "Total Energy": 2177.6,
+            },
+        ),
+        (
+            ("t10-g3-rs485-telemetry.hex",),
+            {
+                "Generation": 1097,
+                "Phase Voltage": 243.2,
+                "Phase Frequency": 49.96,
+                "PV Power": 271.8,
+                "Inverter Temperature": 26,
+                "Daily Energy": 14.6,
+                "Total Energy": 1582.2,
+            },
+        ),
     )
 
     published_frames = len(states["Generation"])
@@ -228,6 +252,7 @@ uart:
   id: test_uart
   port: "{port}"
   baud_rate: 9600
+  rx_buffer_size: 512
 sensor:
   - platform: foxess_solar
     id: test_inverter
